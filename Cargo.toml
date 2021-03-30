@@ -10,5 +10,6 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 subparse = "0.6.2"
+regex = "1"
 clap = "~2.33"
 ansi_term = "0.12"

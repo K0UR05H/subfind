@@ -1,9 +1,10 @@
-use std::{env, fs, io, path::PathBuf};
+use std::{env, error::Error, fs, path::PathBuf};
 
 use clap::{App, Arg};
 
 use ansi_term::Color::Blue;
 use ansi_term::Color::Green;
+use regex::Regex;
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -16,7 +17,7 @@ mod options {
     pub const RECURSIVE: &str = "recursive";
 }
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let current_dir = env::current_dir()?;
     let current_dir = match current_dir.to_str() {
         Some(path) => path,
@@ -54,23 +55,22 @@ fn main() -> io::Result<()> {
     let path = matches.value_of(options::DIR);
     let recursive = matches.is_present(options::RECURSIVE);
 
-    subs(pattern, path, recursive)
+    let re = Regex::new(pattern)?;
+    subs(&re, path, recursive)
 }
 
-fn subs(pattern: &str, path: Option<&str>, recursive: bool) -> io::Result<()> {
+fn subs(re: &Regex, path: Option<&str>, recursive: bool) -> Result<(), Box<dyn Error>> {
     if let Some(path) = path {
         let entries = fs::read_dir(path)?;
 
         for entry in entries {
             let entry = entry?;
             if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    if recursive {
-                        subs(pattern, entry.path().to_str(), true)?
-                    }
+                if file_type.is_dir() && recursive {
+                    subs(re, entry.path().to_str(), true)?
                 } else if file_type.is_file() {
                     println!("{}: {}", Blue.paint("Opening"), entry.path().display());
-                    find(pattern, entry.path())?
+                    find(re, entry.path())?
                 }
             }
         }
@@ -79,7 +79,7 @@ fn subs(pattern: &str, path: Option<&str>, recursive: bool) -> io::Result<()> {
     Ok(())
 }
 
-fn find(pattern: &str, path: PathBuf) -> io::Result<()> {
+fn find(re: &Regex, path: PathBuf) -> Result<(), Box<dyn Error>> {
     let file_content = fs::read_to_string(&path)?;
 
     if let Some(format) = subparse::get_subtitle_format(path.extension(), file_content.as_bytes()) {
@@ -90,12 +90,12 @@ fn find(pattern: &str, path: PathBuf) -> io::Result<()> {
 
         for subtitle_entry in subtitle_entries {
             if let Some(line) = subtitle_entry.line {
-                if let Some(index) = line.find(pattern) {
+                if let Some(mat) = re.find(&line) {
                     println!(
                         "{}{}{}",
-                        &line[..index],
-                        Green.paint(&line[index..index + pattern.len()]),
-                        &line[index + pattern.len()..]
+                        &line[..mat.start()],
+                        Green.paint(&line[mat.start()..mat.end()]),
+                        &line[mat.end()..]
                     );
                 }
             }
