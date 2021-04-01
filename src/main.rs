@@ -19,6 +19,12 @@ mod error;
 
 type Result<T> = std::result::Result<T, error::Error>;
 
+struct Match {
+    line: String,
+    start: usize,
+    end: usize,
+}
+
 fn main() -> Result<()> {
     let current_dir = env::current_dir()?;
     let current_dir = match current_dir.to_str() {
@@ -67,13 +73,23 @@ fn subs(re: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
 
         for entry in entries {
             let entry = entry?;
+
             if let Ok(file_type) = entry.file_type() {
                 if file_type.is_dir() && recursive {
                     subs(re, entry.path().to_str(), true)?
                 } else if file_type.is_file() {
-                    println!("{}: {}", Blue.paint("Opening"), entry.path().display());
-                    if let Err(error) = find(re, entry.path()) {
-                        eprintln!("{}: {}", Red.paint("Error"), error);
+                    match find(re, entry.path()) {
+                        Ok(matches) => {
+                            if !matches.is_empty() {
+                                println!("{}: {}", Blue.paint("file"), entry.path().display());
+                                print_matches(matches);
+                            }
+                        }
+                        Err(error) => eprintln!(
+                            "{}: {}",
+                            Red.paint(error.to_string()),
+                            entry.path().display()
+                        ),
                     }
                 }
             }
@@ -83,26 +99,36 @@ fn subs(re: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
     Ok(())
 }
 
-fn find(re: &Regex, path: PathBuf) -> Result<()> {
+fn print_matches(matches: Vec<Match>) {
+    for mat in matches {
+        println!(
+            "{}{}{}",
+            &mat.line[..mat.start],
+            Green.paint(&mat.line[mat.start..mat.end]),
+            &mat.line[mat.end..]
+        );
+    }
+}
+
+fn find(re: &Regex, path: PathBuf) -> Result<Vec<Match>> {
+    let mut matches = Vec::new();
     let file_content = fs::read_to_string(&path)?;
 
     if let Some(format) = subparse::get_subtitle_format(path.extension(), file_content.as_bytes()) {
-        let subtitle_file = subparse::parse_str(format, &file_content, 30.0)?;
-        let subtitle_entries = subtitle_file.get_subtitle_entries()?;
+        let entries = subparse::parse_str(format, &file_content, 30.0)?.get_subtitle_entries()?;
 
-        for subtitle_entry in subtitle_entries {
-            if let Some(line) = subtitle_entry.line {
+        for entry in entries {
+            if let Some(line) = entry.line {
                 if let Some(mat) = re.find(&line) {
-                    println!(
-                        "{}{}{}",
-                        &line[..mat.start()],
-                        Green.paint(&line[mat.start()..mat.end()]),
-                        &line[mat.end()..]
-                    );
+                    matches.push(Match {
+                        line: line.clone(),
+                        start: mat.start(),
+                        end: mat.end(),
+                    })
                 }
             }
         }
     }
 
-    Ok(())
+    Ok(matches)
 }
