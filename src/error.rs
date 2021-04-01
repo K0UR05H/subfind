@@ -1,9 +1,14 @@
 use std::{fmt, io};
 
-#[derive(Debug)]
 pub struct Error {
     kind: String,
     message: String,
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}\n{}", self.kind, self.message)
+    }
 }
 
 impl fmt::Display for Error {
@@ -11,8 +16,6 @@ impl fmt::Display for Error {
         write!(f, "{}", self.message)
     }
 }
-
-impl std::error::Error for Error {}
 
 impl From<subparse::errors::Error> for Error {
     fn from(error: subparse::errors::Error) -> Self {
