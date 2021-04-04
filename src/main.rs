@@ -1,8 +1,7 @@
-use std::{env, fs, path::PathBuf};
-
 use ansi_term::Color::{Blue, Green, Red};
 use clap::{App, Arg};
 use regex::Regex;
+use std::{env, ffi::OsStr, fs, path::PathBuf};
 
 mod error;
 mod parser;
@@ -96,7 +95,15 @@ fn find(regex: &Regex, path: PathBuf) -> Result<()> {
     let mut parser = Parser::new(&regex);
     parser.set_content(path.extension(), content)?;
 
-    println!("{}: {}", Blue.paint("file"), path.display());
+    println!(
+        "{}",
+        Blue.paint(
+            path.file_name()
+                .unwrap_or(OsStr::new(""))
+                .to_str()
+                .unwrap_or("")
+        )
+    );
     while let Some(mat) = parser.next() {
         println!(
             "{}{}{}",
