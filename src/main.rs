@@ -4,6 +4,14 @@ use ansi_term::Color::{Blue, Green, Red};
 use clap::{App, Arg};
 use regex::Regex;
 
+mod error;
+mod parser;
+
+use error::AppError;
+use parser::Parser;
+
+type Result<T> = std::result::Result<T, AppError>;
+
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
@@ -13,16 +21,6 @@ mod options {
     pub const DIR: &str = "directory";
     pub const PATTERN: &str = "pattern";
     pub const RECURSIVE: &str = "recursive";
-}
-
-mod error;
-
-type Result<T> = std::result::Result<T, error::Error>;
-
-struct Match {
-    line: String,
-    start: usize,
-    end: usize,
 }
 
 fn main() -> Result<()> {
@@ -63,11 +61,11 @@ fn main() -> Result<()> {
     let path = matches.value_of(options::DIR);
     let recursive = matches.is_present(options::RECURSIVE);
 
-    let re = Regex::new(pattern)?;
-    subs(&re, path, recursive)
+    let regex = Regex::new(pattern)?;
+    subs(&regex, path, recursive)
 }
 
-fn subs(re: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
+fn subs(regex: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
     if let Some(path) = path {
         let entries = fs::read_dir(path)?;
 
@@ -76,20 +74,14 @@ fn subs(re: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
 
             if let Ok(file_type) = entry.file_type() {
                 if file_type.is_dir() && recursive {
-                    subs(re, entry.path().to_str(), true)?
+                    subs(regex, entry.path().to_str(), true)?
                 } else if file_type.is_file() {
-                    match find(re, entry.path()) {
-                        Ok(matches) => {
-                            if !matches.is_empty() {
-                                println!("{}: {}", Blue.paint("file"), entry.path().display());
-                                print_matches(matches);
-                            }
-                        }
-                        Err(error) => eprintln!(
+                    if let Err(error) = find(regex, entry.path()) {
+                        eprintln!(
                             "{}: {}",
                             Red.paint(error.to_string()),
                             entry.path().display()
-                        ),
+                        );
                     }
                 }
             }
@@ -99,8 +91,13 @@ fn subs(re: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
     Ok(())
 }
 
-fn print_matches(matches: Vec<Match>) {
-    for mat in matches {
+fn find(regex: &Regex, path: PathBuf) -> Result<()> {
+    let content = fs::read_to_string(&path)?;
+    let mut parser = Parser::new(&regex);
+    parser.set_content(path.extension(), content)?;
+
+    println!("{}: {}", Blue.paint("file"), path.display());
+    while let Some(mat) = parser.next() {
         println!(
             "{}{}{}",
             &mat.line[..mat.start],
@@ -108,27 +105,6 @@ fn print_matches(matches: Vec<Match>) {
             &mat.line[mat.end..]
         );
     }
-}
 
-fn find(re: &Regex, path: PathBuf) -> Result<Vec<Match>> {
-    let mut matches = Vec::new();
-    let file_content = fs::read_to_string(&path)?;
-
-    if let Some(format) = subparse::get_subtitle_format(path.extension(), file_content.as_bytes()) {
-        let entries = subparse::parse_str(format, &file_content, 30.0)?.get_subtitle_entries()?;
-
-        for entry in entries {
-            if let Some(line) = entry.line {
-                if let Some(mat) = re.find(&line) {
-                    matches.push(Match {
-                        line: line.clone(),
-                        start: mat.start(),
-                        end: mat.end(),
-                    })
-                }
-            }
-        }
-    }
-
-    Ok(matches)
+    Ok(())
 }
