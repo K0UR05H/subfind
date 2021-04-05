@@ -1,15 +1,9 @@
 use ansi_term::Color::{Blue, Green, Red};
 use clap::{App, Arg};
-use regex::Regex;
-use std::{env, ffi::OsStr, fs, path::PathBuf};
+use regex::{Match, Regex};
+use std::{env, error::Error, ffi::OsStr, fs, path::PathBuf};
 
-mod error;
-mod parser;
-
-use error::AppError;
-use parser::Parser;
-
-type Result<T> = std::result::Result<T, AppError>;
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -91,27 +85,35 @@ fn subs(regex: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
 }
 
 fn find(regex: &Regex, path: PathBuf) -> Result<()> {
-    let content = fs::read_to_string(&path)?;
-    let mut parser = Parser::new(&regex);
-    parser.set_content(path.extension(), content)?;
+    let items = srtparse::from_file(&path)?;
 
-    println!(
-        "{}",
-        Blue.paint(
-            path.file_name()
-                .unwrap_or(OsStr::new(""))
-                .to_str()
-                .unwrap_or("")
-        )
-    );
-    while let Some(mat) = parser.next() {
-        println!(
-            "{}{}{}",
-            &mat.line[..mat.start],
-            Green.paint(&mat.line[mat.start..mat.end]),
-            &mat.line[mat.end..]
-        );
+    print_file_name(path.file_stem());
+
+    for item in items {
+        let text = item.text;
+
+        if let Some(mat) = regex.find(&text) {
+            print_match(&text, &mat);
+        }
     }
 
     Ok(())
+}
+
+fn print_file_name(file_name: Option<&OsStr>) {
+    let file_name = file_name
+        .unwrap_or_else(|| OsStr::new(""))
+        .to_str()
+        .unwrap_or("");
+
+    println!("{}", Blue.paint(file_name));
+}
+
+fn print_match(text: &str, mat: &Match) {
+    println!(
+        "{}{}{}",
+        &text[..mat.start()],
+        Green.paint(&text[mat.start()..mat.end()]),
+        &text[mat.end()..]
+    );
 }

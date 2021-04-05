@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-subparse = "0.6.2"
 regex = "1"
+srtparse = "0.2.0"
 clap = "~2.33"
 ansi_term = "0.12"
