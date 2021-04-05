@@ -1,7 +1,13 @@
 use ansi_term::Color::{Blue, Green, Red};
 use clap::{App, Arg};
 use regex::{Match, Regex};
-use std::{env, error::Error, ffi::OsStr, fs, path::PathBuf};
+use std::{
+    env,
+    error::Error,
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -51,53 +57,45 @@ fn main() -> Result<()> {
         .get_matches();
 
     let pattern = matches.value_of(options::PATTERN).unwrap();
-    let path = matches.value_of(options::DIR);
+    let path = matches.value_of(options::DIR).unwrap();
     let recursive = matches.is_present(options::RECURSIVE);
-
     let regex = Regex::new(pattern)?;
+
     subs(&regex, path, recursive)
 }
 
-fn subs(regex: &Regex, path: Option<&str>, recursive: bool) -> Result<()> {
-    if let Some(path) = path {
-        let entries = fs::read_dir(path)?;
+fn subs(regex: &Regex, path: impl AsRef<Path>, recursive: bool) -> Result<()> {
+    let entries = fs::read_dir(path)?;
 
-        for entry in entries {
-            let entry = entry?;
+    for entry in entries {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
 
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() && recursive {
-                    subs(regex, entry.path().to_str(), true)?
-                } else if file_type.is_file() {
-                    if let Err(error) = find(regex, entry.path()) {
-                        eprintln!(
-                            "{}: {}",
-                            Red.paint(error.to_string()),
-                            entry.path().display()
-                        );
-                    }
-                }
-            }
+        if file_type.is_dir() && recursive {
+            subs(regex, entry.path(), true)?;
+        } else if file_type.is_file() {
+            find(regex, entry.path());
         }
     }
 
     Ok(())
 }
 
-fn find(regex: &Regex, path: PathBuf) -> Result<()> {
-    let items = srtparse::from_file(&path)?;
+fn find(regex: &Regex, path: PathBuf) {
+    match srtparse::from_file(&path) {
+        Ok(items) => {
+            print_file_name(path.file_stem());
 
-    print_file_name(path.file_stem());
-
-    for item in items {
-        let text = item.text;
-
-        if let Some(mat) = regex.find(&text) {
-            print_match(&text, &mat);
+            for item in items {
+                if let Some(mat) = regex.find(&item.text) {
+                    print_match(&item.text, &mat);
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("{}: {}", Red.paint(error.to_string()), path.display());
         }
     }
-
-    Ok(())
 }
 
 fn print_file_name(file_name: Option<&OsStr>) {
